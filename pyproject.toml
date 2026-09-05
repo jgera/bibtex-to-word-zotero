@@ -3,15 +3,15 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "bibtex-zotero"
+name = "bibtex-to-word-zotero"
 version = "1.0.0"
-description = "Automate inserting native Zotero reference field codes into Microsoft Word (.docx) documents from BibTeX (.bib/.txt) files."
+description = "Automate inserting native Zotero reference field codes into Microsoft Word (.docx) documents directly from BibTeX (.bib/.txt) files."
 readme = "README.md"
 authors = [
     { name = "Antigravity Systems & Contributor Community", email = "playground@antigravity.ai" }
 ]
 license = { text = "MIT" }
-keywords = ["zotero", "bibtex", "docx", "word", "csl", "openxml", "citations", "antigravity-skill"]
+keywords = ["bibtex", "zotero", "word", "docx", "citations", "references", "csl-json", "openxml", "antigravity-skill"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Science/Research",
@@ -30,8 +30,8 @@ requires-python = ">=3.8"
 dependencies = []
 
 [project.scripts]
-bibtex-zotero = "scripts.bibtex_to_zotero_word:main"
+bibtex-to-word-zotero = "scripts.bibtex_to_zotero_word:main"
 
 [project.urls]
-"Homepage" = "https://github.com/your-username/bibtex-zotero"
-"Bug Tracker" = "https://github.com/your-username/bibtex-zotero/issues"
+"Homepage" = "https://github.com/your-username/bibtex-to-word-zotero"
+"Bug Tracker" = "https://github.com/your-username/bibtex-to-word-zotero/issues"

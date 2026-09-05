@@ -1,5 +1,5 @@
 ---
-name: bibtex-zotero
+name: bibtex-to-word-zotero
 description: >-
   Automate inserting native Zotero reference field codes into Microsoft Word (.docx) documents
   from BibTeX (.txt or .bib) files. Use when the user wants to convert citation placeholders
@@ -7,7 +7,7 @@ description: >-
   or generate Word documents ready for Zotero's desktop plugin.
 ---
 
-# BibTeX to Zotero Word Citation Automation Skill
+# BibTeX to Word Zotero Citation Automation Skill (`bibtex-to-word-zotero`)
 
 Use this skill to convert citation placeholders (e.g. `{wang2020minivlm}`) in Microsoft Word (`.docx`) documents into **native Zotero OpenXML field codes** (`ADDIN ZOTERO_ITEM CSL_CITATION`) generated directly from BibTeX (`.bib` / `.txt`) files.
 
