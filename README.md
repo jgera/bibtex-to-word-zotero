@@ -5,26 +5,26 @@
 [![Antigravity AI Skill](https://img.shields.io/badge/AI%20Skill-bibtex--to--word--zotero-purple.svg)](SKILL.md)
 [![OpenXML Compliant](https://img.shields.io/badge/OpenXML-100%25%20Valid-brightgreen.svg)](references/OOXML_Zotero_Spec.md)
 
-> **Automate inserting native Zotero reference fields into Microsoft Word (`.docx`) documents directly from BibTeX (`.bib` / `.txt`) files. Zero dependencies, OpenXML compliant, and AI Agent Skill ready.**
+Automate inserting native Zotero reference fields into Microsoft Word (`.docx`) documents directly from BibTeX (`.bib` / `.txt`) files. Zero dependencies, OpenXML compliant, and AI Agent Skill ready.
 
 ---
 
-## 📌 How It Works
+## How It Works
 
 ```mermaid
 flowchart LR
-    INPUT["📄 Word Document ({citekey})<br/>+ 📚 BibTeX File"] --> ENGINE["⚙️ bibtex-to-word-zotero<br/>Engine"]
-    ENGINE --> OUTPUT["📄 Zotero-Linked<br/>Word Document (.docx)"]
-    OUTPUT --> WORD["✨ Open in Word<br/>(Zotero Add-in Recognizes Citations!)"]
+    INPUT["Word Document ({citekey})<br/>+ BibTeX File"] --> ENGINE["bibtex-to-word-zotero<br/>Engine"]
+    ENGINE --> OUTPUT["Zotero-Linked<br/>Word Document (.docx)"]
+    OUTPUT --> WORD["Open in Word<br/>(Zotero Add-in Recognizes Citations)"]
 ```
 
-`bibtex-to-word-zotero` takes a Microsoft Word (`.docx`) file containing citation placeholders (such as `{wang2020minivlm}` or `{vaswani2017attention}`) and a BibTeX file (`.bib` or `.txt`), and automatically injects **native Zotero field codes** (`ADDIN ZOTERO_ITEM CSL_CITATION`).
+`bibtex-to-word-zotero` takes a Microsoft Word (`.docx`) file containing citation placeholders (such as `{wang2020minivlm}` or `{vaswani2017attention}`) and a BibTeX file (`.bib` or `.txt`), and automatically injects native Zotero field codes (`ADDIN ZOTERO_ITEM CSL_CITATION`).
 
-The resulting `.docx` document opens in Microsoft Word **without any recovery warnings**, allowing researchers to click **Refresh** or **Add/Edit Bibliography** instantly using Zotero's desktop plugin.
+The resulting `.docx` document opens in Microsoft Word without any recovery warnings, allowing researchers to click **Refresh** or **Add/Edit Bibliography** instantly using Zotero's desktop plugin.
 
 ---
 
-## ✨ Features & Capabilities
+## Features & Capabilities
 
 - **Native Zotero OpenXML Integration**: Generates native 5-run OpenXML field sequences (`w:fldChar` begin → `w:instrText` CSL-JSON → `w:fldChar` separate → `w:t` label → `w:fldChar` end).
 - **Multiple Citation Styles (`--style`)**: Supports `ieee`, `apa`, `chicago-author-date`, `mla`, `nature`, `vancouver`, `harvard`. Automatically formats in-text labels (`[1]` vs `(Vaswani & Shazeer, 2017)`).
@@ -38,7 +38,7 @@ The resulting `.docx` document opens in Microsoft Word **without any recovery wa
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Installation
 
@@ -54,7 +54,7 @@ cd bibtex-to-word-zotero
 
 ---
 
-### 2. Basic Command Line Usage
+### 2. Command Line Usage
 
 #### IEEE Style Conversion (Numeric)
 ```bash
@@ -78,7 +78,7 @@ python scripts/bibtex_to_zotero_word.py --input document_zotero.docx --check --j
 
 ---
 
-## 🧪 Testing
+## Testing
 
 Run the automated zero-dependency unit test suite:
 
@@ -104,17 +104,17 @@ OK
 
 ---
 
-## 🔬 Internal Engine Pipeline & Architecture
+## Internal Engine Pipeline & Architecture
 
 ```mermaid
 flowchart TD
     subgraph Inputs["1. Input Files"]
-        DOCX["📄 Word Document (.docx)<br/>with {citekey} placeholders"]
-        BIB["📚 BibTeX File (.bib / .txt)<br/>with reference metadata"]
+        DOCX["Word Document (.docx)<br/>with {citekey} placeholders"]
+        BIB["BibTeX File (.bib / .txt)<br/>with reference metadata"]
     end
 
     subgraph Engine["2. bibtex-to-word-zotero Engine"]
-        CORE["⚙️ Zero-Dependency OpenXML Converter"]
+        CORE["Zero-Dependency OpenXML Converter"]
         PARSE["1. Depth-Balanced BibTeX Parser"]
         SAN["2. LaTeX Accent & Special Character Sanitizer"]
         CHUNK["3. ZOTERO_PREF 255-Char Property Chunker"]
@@ -124,12 +124,12 @@ flowchart TD
     end
 
     subgraph Output["3. Output Result"]
-        OUT_DOCX["📄 Converted Word Document (.docx)<br/>with Native Zotero Field Codes"]
+        OUT_DOCX["Converted Word Document (.docx)<br/>with Native Zotero Field Codes"]
     end
 
     subgraph Desktop["4. Microsoft Word & Zotero"]
-        WORD_UI["📝 Microsoft Word"]
-        ZOTERO_UI["✨ Zotero Add-in Instant Recognition & Bibliography Rendering"]
+        WORD_UI["Microsoft Word"]
+        ZOTERO_UI["Zotero Add-in Instant Recognition & Bibliography Rendering"]
 
         WORD_UI --> ZOTERO_UI
     end
@@ -144,6 +144,6 @@ For in-depth reverse-engineering details, OpenXML field schemas, custom property
 
 ---
 
-## 📄 License
+## License
 
 Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for details.
