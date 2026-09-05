@@ -15,17 +15,38 @@
 
 The resulting `.docx` document opens in Microsoft Word **without any recovery or unreadable content warnings**, and the Zotero desktop add-in immediately recognizes all inserted references, allowing researchers to click **Refresh** or **Add/Edit Bibliography** instantly.
 
-```text
-[Input Word .docx ({citekey})]  +  [BibTeX .bib/.txt File]
-                       │
-                       ▼
-         [bibtex-to-word-zotero Engine]
-                       │
-                       ▼
- [Output Word .docx with Native Zotero Field Codes]
-                       │
-                       ▼
- [Open in Word -> Zotero Add-in Recognizes All Citations & Bibliography!]
+```mermaid
+flowchart TD
+    subgraph Inputs["1. Input Files"]
+        DOCX["📄 Word Document (.docx)<br/>with {citekey} placeholders"]
+        BIB["📚 BibTeX File (.bib / .txt)<br/>with reference metadata"]
+    end
+
+    subgraph Engine["2. bibtex-to-word-zotero Engine"]
+        CORE["⚙️ Zero-Dependency OpenXML Converter"]
+        PARSE["1. Depth-Balanced BibTeX Parser"]
+        SAN["2. LaTeX Accent & Special Character Sanitizer"]
+        CHUNK["3. ZOTERO_PREF 255-Char Property Chunker"]
+        RID["4. Unique Relationship ID Allocator (rIdN)"]
+
+        CORE --> PARSE --> SAN --> CHUNK --> RID
+    end
+
+    subgraph Output["3. Output Result"]
+        OUT_DOCX["📄 Converted Word Document (.docx)<br/>with Native Zotero Field Codes"]
+    end
+
+    subgraph Desktop["4. Microsoft Word & Zotero"]
+        WORD_UI["📝 Microsoft Word"]
+        ZOTERO_UI["✨ Zotero Add-in Instant Recognition & Bibliography Rendering"]
+
+        WORD_UI --> ZOTERO_UI
+    end
+
+    DOCX --> CORE
+    BIB --> CORE
+    RID --> OUT_DOCX
+    OUT_DOCX --> WORD_UI
 ```
 
 ---
