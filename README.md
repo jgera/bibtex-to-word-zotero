@@ -9,45 +9,18 @@
 
 ---
 
-## 📌 What Does This Tool Do?
+## 📌 How It Works
+
+```mermaid
+flowchart LR
+    INPUT["📄 Word Document ({citekey})<br/>+ 📚 BibTeX File"] --> ENGINE["⚙️ bibtex-to-word-zotero<br/>Engine"]
+    ENGINE --> OUTPUT["📄 Zotero-Linked<br/>Word Document (.docx)"]
+    OUTPUT --> WORD["✨ Open in Word<br/>(Zotero Add-in Recognizes Citations!)"]
+```
 
 `bibtex-to-word-zotero` takes a Microsoft Word (`.docx`) file containing citation placeholders (such as `{wang2020minivlm}` or `{vaswani2017attention}`) and a BibTeX file (`.bib` or `.txt`), and automatically injects **native Zotero field codes** (`ADDIN ZOTERO_ITEM CSL_CITATION`).
 
-The resulting `.docx` document opens in Microsoft Word **without any recovery or unreadable content warnings**, and the Zotero desktop add-in immediately recognizes all inserted references, allowing researchers to click **Refresh** or **Add/Edit Bibliography** instantly.
-
-```mermaid
-flowchart TD
-    subgraph Inputs["1. Input Files"]
-        DOCX["📄 Word Document (.docx)<br/>with {citekey} placeholders"]
-        BIB["📚 BibTeX File (.bib / .txt)<br/>with reference metadata"]
-    end
-
-    subgraph Engine["2. bibtex-to-word-zotero Engine"]
-        CORE["⚙️ Zero-Dependency OpenXML Converter"]
-        PARSE["1. Depth-Balanced BibTeX Parser"]
-        SAN["2. LaTeX Accent & Special Character Sanitizer"]
-        CHUNK["3. ZOTERO_PREF 255-Char Property Chunker"]
-        RID["4. Unique Relationship ID Allocator (rIdN)"]
-
-        CORE --> PARSE --> SAN --> CHUNK --> RID
-    end
-
-    subgraph Output["3. Output Result"]
-        OUT_DOCX["📄 Converted Word Document (.docx)<br/>with Native Zotero Field Codes"]
-    end
-
-    subgraph Desktop["4. Microsoft Word & Zotero"]
-        WORD_UI["📝 Microsoft Word"]
-        ZOTERO_UI["✨ Zotero Add-in Instant Recognition & Bibliography Rendering"]
-
-        WORD_UI --> ZOTERO_UI
-    end
-
-    DOCX --> CORE
-    BIB --> CORE
-    RID --> OUT_DOCX
-    OUT_DOCX --> WORD_UI
-```
+The resulting `.docx` document opens in Microsoft Word **without any recovery warnings**, allowing researchers to click **Refresh** or **Add/Edit Bibliography** instantly using Zotero's desktop plugin.
 
 ---
 
@@ -75,7 +48,7 @@ flowchart TD
 
 #### As a Standalone CLI Tool
 ```bash
-git clone https://github.com/your-username/bibtex-to-word-zotero.git
+git clone https://github.com/jgera/bibtex-to-word-zotero.git
 cd bibtex-to-word-zotero
 ```
 
@@ -131,7 +104,41 @@ OK
 
 ---
 
-## 📖 Technical Reference & Architecture
+## 🔬 Internal Engine Pipeline & Architecture
+
+```mermaid
+flowchart TD
+    subgraph Inputs["1. Input Files"]
+        DOCX["📄 Word Document (.docx)<br/>with {citekey} placeholders"]
+        BIB["📚 BibTeX File (.bib / .txt)<br/>with reference metadata"]
+    end
+
+    subgraph Engine["2. bibtex-to-word-zotero Engine"]
+        CORE["⚙️ Zero-Dependency OpenXML Converter"]
+        PARSE["1. Depth-Balanced BibTeX Parser"]
+        SAN["2. LaTeX Accent & Special Character Sanitizer"]
+        CHUNK["3. ZOTERO_PREF 255-Char Property Chunker"]
+        RID["4. Unique Relationship ID Allocator (rIdN)"]
+
+        CORE --> PARSE --> SAN --> CHUNK --> RID
+    end
+
+    subgraph Output["3. Output Result"]
+        OUT_DOCX["📄 Converted Word Document (.docx)<br/>with Native Zotero Field Codes"]
+    end
+
+    subgraph Desktop["4. Microsoft Word & Zotero"]
+        WORD_UI["📝 Microsoft Word"]
+        ZOTERO_UI["✨ Zotero Add-in Instant Recognition & Bibliography Rendering"]
+
+        WORD_UI --> ZOTERO_UI
+    end
+
+    DOCX --> CORE
+    BIB --> CORE
+    RID --> OUT_DOCX
+    OUT_DOCX --> WORD_UI
+```
 
 For in-depth reverse-engineering details, OpenXML field schemas, custom property chunking rules, and relationship ID handling, see [`references/OOXML_Zotero_Spec.md`](./references/OOXML_Zotero_Spec.md).
 
