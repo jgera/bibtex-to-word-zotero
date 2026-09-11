@@ -361,8 +361,21 @@ def register_all_namespaces(xml_bytes):
     if default_match:
         ET.register_namespace('', default_match.group(1))
 
+def clean_rPr_for_citation(rPr_elem):
+    """Clone rPr element and strip bold tags (<w:b/>, <w:bCs/>) to ensure citations do not render bold."""
+    if rPr_elem is None:
+        return None
+    rPr_copy = ET.fromstring(ET.tostring(rPr_elem))
+    w_b = f"{{{WORD_NS}}}b"
+    w_bCs = f"{{{WORD_NS}}}bCs"
+    for tag in [w_b, w_bCs]:
+        b_node = rPr_copy.find(tag)
+        if b_node is not None:
+            rPr_copy.remove(b_node)
+    return rPr_copy
+
 def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=False):
-    """Process word/document.xml and replace {citekey} placeholders with Zotero fields."""
+    """Process word/document.xml and replace {citekey} placeholders with Zotero fields while preserving per-run formatting."""
     register_all_namespaces(xml_bytes)
     
     xml_str_orig = xml_bytes.decode('utf-8')
@@ -377,9 +390,7 @@ def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=
     w_fldChar = f"{{{WORD_NS}}}fldChar"
     w_instrText = f"{{{WORD_NS}}}instrText"
     w_rPr = f"{{{WORD_NS}}}rPr"
-    w_rFonts = f"{{{WORD_NS}}}rFonts"
     
-    # Global persistent mapping across document for citation deduplication
     key_to_id = {}
     key_to_zotero_key = {}
     key_to_num = {}
@@ -392,14 +403,8 @@ def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=
     
     for p in root.iter(w_p):
         text_runs = []
-        rPr_sample = None
-        
         for elem in p:
             if elem.tag == w_r:
-                if rPr_sample is None:
-                    rPr_elem = elem.find(w_rPr)
-                    if rPr_elem is not None:
-                        rPr_sample = rPr_elem
                 t_elem = elem.find(w_t)
                 if t_elem is not None and t_elem.text:
                     text_runs.append(t_elem.text)
@@ -437,7 +442,6 @@ def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=
 
         matches = list(placeholder_pattern.finditer(full_text))
         valid_placeholders = []
-        
         for m in matches:
             ph_text = m.group(0)
             inner = m.group(1)
@@ -448,86 +452,141 @@ def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=
                 
         if not valid_placeholders:
             continue
-            
+
+        # Check if placeholders span across run boundaries
+        ph_strings = [ph[0] for ph in valid_placeholders]
+        need_consolidation = False
+        for ph in ph_strings:
+            ph_found_in_single_run = False
+            for elem in p:
+                if elem.tag == w_r:
+                    t_elem = elem.find(w_t)
+                    if t_elem is not None and t_elem.text and ph in t_elem.text:
+                        ph_found_in_single_run = True
+                        break
+            if not ph_found_in_single_run:
+                need_consolidation = True
+                break
+                
+        # If placeholder spans across runs, consolidate paragraph runs while preserving first run's rPr
+        if need_consolidation:
+            runs_in_p = [elem for elem in p if elem.tag == w_r]
+            if runs_in_p:
+                first_rPr = runs_in_p[0].find(w_rPr)
+                rPr_copy = ET.fromstring(ET.tostring(first_rPr)) if first_rPr is not None else None
+                pPr = p.find(f"{{{WORD_NS}}}pPr")
+                p.clear()
+                if pPr is not None:
+                    p.append(pPr)
+                r_consolidated = ET.Element(w_r)
+                if rPr_copy is not None:
+                    r_consolidated.append(rPr_copy)
+                t_consolidated = ET.SubElement(r_consolidated, w_t)
+                t_consolidated.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                t_consolidated.text = full_text
+                p.append(r_consolidated)
+
+        # Process each run in paragraph p independently to preserve per-run formatting
+        orig_elements = list(p)
         pPr = p.find(f"{{{WORD_NS}}}pPr")
         p.clear()
         if pPr is not None:
             p.append(pPr)
             
-        split_pattern = "|".join(re.escape(ph[0]) for ph in valid_placeholders)
-        splits = re.split(f"({split_pattern})", full_text)
-        
-        for segment in splits:
-            if not segment:
+        for child in orig_elements:
+            if child.tag == f"{{{WORD_NS}}}pPr":
+                continue
+            if child.tag != w_r:
+                p.append(child)
                 continue
                 
-            matched_keys = None
-            for ph, keys in valid_placeholders:
-                if segment == ph:
-                    matched_keys = keys
-                    break
+            r_elem = child
+            t_elem = r_elem.find(w_t)
+            if t_elem is None or not t_elem.text:
+                p.append(r_elem)
+                continue
+                
+            rPr_elem = r_elem.find(w_rPr)
+            run_text = t_elem.text
+            
+            r_placeholders = [ph for ph in valid_placeholders if ph[0] in run_text]
+            if not r_placeholders:
+                p.append(r_elem)
+                continue
+                
+            split_pattern = "|".join(re.escape(ph[0]) for ph in r_placeholders)
+            splits = re.split(f"({split_pattern})", run_text)
+            
+            for segment in splits:
+                if not segment:
+                    continue
                     
-            if matched_keys:
-                for key in matched_keys:
-                    if key not in key_to_id:
-                        key_to_id[key] = next_item_id
-                        next_item_id += 1
-                        key_to_zotero_key[key] = generate_random_id(8)
-                        key_to_num[key] = len(key_to_num) + 1
+                matched_keys = None
+                for ph, keys in r_placeholders:
+                    if segment == ph:
+                        matched_keys = keys
+                        break
                         
-                csl_json_str, formatted_label = generate_grouped_zotero_csl_citation_json(
-                    matched_keys, bib_entries, key_to_id, key_to_zotero_key, key_to_num, style=style
-                )
-                citations_replaced += 1
-                inserted_keys.extend(matched_keys)
-                
-                def make_run():
-                    r_el = ET.Element(w_r)
-                    if rPr_sample is not None:
-                        r_el.append(ET.fromstring(ET.tostring(rPr_sample)))
-                    return r_el
-                
-                # 1. fldChar begin
-                r_begin = make_run()
-                fld_begin = ET.SubElement(r_begin, w_fldChar)
-                fld_begin.set(f"{{{WORD_NS}}}fldCharType", "begin")
-                p.append(r_begin)
-                
-                # 2. instrText
-                r_instr = make_run()
-                instr_text = ET.SubElement(r_instr, w_instrText)
-                instr_text.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-                instr_text.text = f" ADDIN ZOTERO_ITEM CSL_CITATION {csl_json_str} "
-                p.append(r_instr)
-                
-                # 3. fldChar separate
-                r_sep = make_run()
-                fld_sep = ET.SubElement(r_sep, w_fldChar)
-                fld_sep.set(f"{{{WORD_NS}}}fldCharType", "separate")
-                p.append(r_sep)
-                
-                # 4. formatted label run
-                r_label = ET.Element(w_r)
-                rPr_label = ET.SubElement(r_label, w_rPr)
-                rFonts = ET.SubElement(rPr_label, w_rFonts)
-                rFonts.set(f"{{{WORD_NS}}}cs", "Times New Roman")
-                t_label = ET.SubElement(r_label, w_t)
-                t_label.text = formatted_label
-                p.append(r_label)
-                
-                # 5. fldChar end
-                r_end = make_run()
-                fld_end = ET.SubElement(r_end, w_fldChar)
-                fld_end.set(f"{{{WORD_NS}}}fldCharType", "end")
-                p.append(r_end)
-            else:
-                r_text = ET.Element(w_r)
-                if rPr_sample is not None:
-                    r_text.append(ET.fromstring(ET.tostring(rPr_sample)))
-                t_text = ET.SubElement(r_text, w_t)
-                t_text.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
-                t_text.text = segment
-                p.append(r_text)
+                if matched_keys:
+                    for key in matched_keys:
+                        if key not in key_to_id:
+                            key_to_id[key] = next_item_id
+                            next_item_id += 1
+                            key_to_zotero_key[key] = generate_random_id(8)
+                            key_to_num[key] = len(key_to_num) + 1
+                            
+                    csl_json_str, formatted_label = generate_grouped_zotero_csl_citation_json(
+                        matched_keys, bib_entries, key_to_id, key_to_zotero_key, key_to_num, style=style
+                    )
+                    citations_replaced += 1
+                    inserted_keys.extend(matched_keys)
+                    
+                    rPr_unbold = clean_rPr_for_citation(rPr_elem)
+                    
+                    def make_citation_run():
+                        r_el = ET.Element(w_r)
+                        if rPr_unbold is not None:
+                            r_el.append(ET.fromstring(ET.tostring(rPr_unbold)))
+                        return r_el
+                    
+                    # 1. fldChar begin
+                    r_begin = make_citation_run()
+                    fld_begin = ET.SubElement(r_begin, w_fldChar)
+                    fld_begin.set(f"{{{WORD_NS}}}fldCharType", "begin")
+                    p.append(r_begin)
+                    
+                    # 2. instrText
+                    r_instr = make_citation_run()
+                    instr_text = ET.SubElement(r_instr, w_instrText)
+                    instr_text.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                    instr_text.text = f" ADDIN ZOTERO_ITEM CSL_CITATION {csl_json_str} "
+                    p.append(r_instr)
+                    
+                    # 3. fldChar separate
+                    r_sep = make_citation_run()
+                    fld_sep = ET.SubElement(r_sep, w_fldChar)
+                    fld_sep.set(f"{{{WORD_NS}}}fldCharType", "separate")
+                    p.append(r_sep)
+                    
+                    # 4. formatted label run
+                    r_label = make_citation_run()
+                    t_label = ET.SubElement(r_label, w_t)
+                    t_label.text = formatted_label
+                    p.append(r_label)
+                    
+                    # 5. fldChar end
+                    r_end = make_citation_run()
+                    fld_end = ET.SubElement(r_end, w_fldChar)
+                    fld_end.set(f"{{{WORD_NS}}}fldCharType", "end")
+                    p.append(r_end)
+                else:
+                    r_segment = ET.Element(w_r)
+                    if rPr_elem is not None:
+                        r_segment.append(ET.fromstring(ET.tostring(rPr_elem)))
+                    t_segment = ET.SubElement(r_segment, w_t)
+                    t_segment.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+                    t_segment.text = segment
+                    p.append(r_segment)
                 
     modified_xml = ET.tostring(root, encoding='utf-8', xml_declaration=True).decode('utf-8')
     
