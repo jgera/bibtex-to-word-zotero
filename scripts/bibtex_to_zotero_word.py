@@ -314,12 +314,12 @@ def generate_zotero_bibliography_xml(bib_entries):
     return f" ADDIN ZOTERO_BIBL CSL_BIBLIOGRAPHY {json_str} "
 
 def register_all_namespaces(xml_bytes):
-    """Automatically register all XML namespace prefixes found in the document header."""
-    header = xml_bytes[:4000].decode('utf-8', errors='ignore')
-    matches = re.findall(r'xmlns:([a-zA-Z0-9_\-]+)=["\']([^"\']+)["\']', header)
+    """Automatically register all XML namespace prefixes found across the entire document."""
+    xml_str = xml_bytes.decode('utf-8', errors='ignore')
+    matches = re.findall(r'xmlns:([a-zA-Z0-9_\-]+)=["\']([^"\']+)["\']', xml_str)
     for prefix, uri in matches:
         ET.register_namespace(prefix, uri)
-    default_match = re.search(r'xmlns=["\']([^"\']+)["\']', header)
+    default_match = re.search(r'xmlns=["\']([^"\']+)["\']', xml_str)
     if default_match:
         ET.register_namespace('', default_match.group(1))
 
@@ -479,8 +479,24 @@ def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=
     modified_xml = ET.tostring(root, encoding='utf-8', xml_declaration=True).decode('utf-8')
     
     first_body = modified_xml.find('<w:body>')
-    if orig_header and first_body != -1:
-        modified_xml = orig_header + modified_xml[first_body:]
+    orig_body_pos = xml_str_orig.find('<w:body>')
+    
+    if orig_header and first_body != -1 and orig_body_pos != -1:
+        new_header = modified_xml[:first_body]
+        new_xmlns = re.findall(r'(xmlns:([a-zA-Z0-9_\-]+)=["\']([^"\']+)["\'])', new_header)
+        
+        missing_decls = []
+        for full_decl, prefix, uri in new_xmlns:
+            if f'xmlns:{prefix}=' not in orig_header:
+                missing_decls.append(full_decl)
+                
+        if missing_decls:
+            insert_pos = orig_header.rfind('>')
+            combined_header = orig_header[:insert_pos] + ' ' + ' '.join(missing_decls) + '>'
+        else:
+            combined_header = orig_header
+            
+        modified_xml = combined_header + modified_xml[first_body:]
         
     return modified_xml.encode('utf-8'), citations_replaced, inserted_keys
 
