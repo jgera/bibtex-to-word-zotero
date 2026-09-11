@@ -41,7 +41,6 @@ def clean_latex_accents(text):
     if not text:
         return ""
     
-    # Map common LaTeX accent & special character patterns
     replacements = [
         (r'{\L}', 'Ł'), (r'{\l}', 'ł'), (r'\L', 'Ł'), (r'\l', 'ł'),
         (r"{\'e}", 'é'), (r"{\`e}", 'è'), (r"{\^e}", 'ê'), (r'{\"e}', 'ë'),
@@ -67,10 +66,7 @@ def clean_latex_accents(text):
     for pattern, repl in replacements:
         text = text.replace(pattern, repl)
         
-    # Unbrace single-word accent expressions like {ğ} -> ğ, {é} -> é
     text = re.sub(r'\{([a-zA-Z\u0080-\uFFFF]+)\}', r'\1', text)
-        
-    # Remove any remaining standalone backslashes to avoid Word field switch conflicts
     text = text.replace('\\', '')
     return text
 
@@ -80,7 +76,6 @@ def parse_authors(author_str):
     if not author_str:
         return authors
     
-    # Split multiple authors
     raw_authors = author_str.split(' and ')
     for a in raw_authors:
         a = clean_latex_accents(a.strip())
@@ -99,7 +94,6 @@ def parse_authors(author_str):
                 family = a
                 given = ""
                 
-        # Filter out 'others' or 'et al.' entries
         if family.lower() in ('others', 'et al.', 'et al'):
             continue
             
@@ -111,12 +105,10 @@ def clean_bib_value(val):
     if not val:
         return ""
     val = val.strip()
-    # Strip outer braces or quotes
     if (val.startswith('{') and val.endswith('}')) or (val.startswith('"') and val.endswith('"')):
         val = val[1:-1].strip()
     val = clean_latex_accents(val)
     val = re.sub(r'\s+', ' ', val)
-    # Common LaTeX cleanups
     val = val.replace('--', '–')
     val = val.replace('``', '"').replace("''", '"')
     return val
@@ -254,7 +246,6 @@ def format_citation_label(bib_entry, citation_index, style='ieee'):
     if style in ('ieee', 'nature', 'vancouver'):
         return f"[{citation_index}]"
         
-    # Author-Date styles (APA, Chicago, MLA, Harvard)
     fields = bib_entry.get('fields', {})
     authors = parse_authors(fields.get('author', ''))
     year = fields.get('year', '')
@@ -272,15 +263,70 @@ def format_citation_label(bib_entry, citation_index, style='ieee'):
     else:
         return f"({authors[0]['family']} et al., {year_str})"
 
-def generate_zotero_csl_citation_json(cite_key, bib_entry, citation_index, style='ieee'):
-    """Build the JSON string for ADDIN ZOTERO_ITEM CSL_CITATION."""
+def compress_num_ranges(nums):
+    """Compress a list of integers into IEEE range string format like [1]–[3], [5], [7]–[9]."""
+    if not nums:
+        return ""
+    nums = sorted(list(set(nums)))
+    ranges = []
+    start = nums[0]
+    end = nums[0]
+    
+    for n in nums[1:]:
+        if n == end + 1:
+            end = n
+        else:
+            if start == end:
+                ranges.append(f"{start}")
+            elif end == start + 1:
+                ranges.append(f"{start}, {end}")
+            else:
+                ranges.append(f"{start}–{end}")
+            start = n
+            end = n
+            
+    if start == end:
+        ranges.append(f"{start}")
+    elif end == start + 1:
+        ranges.append(f"{start}, {end}")
+    else:
+        ranges.append(f"{start}–{end}")
+        
+    return "[" + ", ".join(ranges) + "]"
+
+def generate_grouped_zotero_csl_citation_json(keys, bib_entries, key_to_id, key_to_zotero_key, key_to_num, style='ieee'):
+    """Build the JSON string and formatted label for single or multi-key Zotero CSL citation."""
     citation_id = generate_random_id(8)
-    zotero_item_key = generate_random_id(8)
-    item_id = 10000 + citation_index
     
-    formatted_label = format_citation_label(bib_entry, citation_index, style)
-    item_data = bib_entry_to_csl_item_data(item_id, bib_entry)
+    citation_items = []
+    nums = []
+    author_date_labels = []
     
+    for key in keys:
+        if key not in bib_entries:
+            continue
+        entry = bib_entries[key]
+        item_id = key_to_id[key]
+        zotero_key = key_to_zotero_key[key]
+        num = key_to_num[key]
+        nums.append(num)
+        
+        item_data = bib_entry_to_csl_item_data(item_id, entry)
+        citation_items.append({
+            "id": item_id,
+            "uris": [f"http://zotero.org/users/local/items/{zotero_key}"],
+            "itemData": item_data
+        })
+        
+        if style not in ('ieee', 'nature', 'vancouver'):
+            author_date_labels.append(format_citation_label(entry, num, style=style))
+            
+    if style in ('ieee', 'nature', 'vancouver'):
+        formatted_label = compress_num_ranges(nums)
+    else:
+        clean_labels = [l.strip('()') for l in author_date_labels]
+        formatted_label = "(" + "; ".join(clean_labels) + ")"
+        
     csl_obj = {
         "citationID": citation_id,
         "properties": {
@@ -289,15 +335,7 @@ def generate_zotero_csl_citation_json(cite_key, bib_entry, citation_index, style
             "plainCitation": formatted_label,
             "noteIndex": 0
         },
-        "citationItems": [
-            {
-                "id": item_id,
-                "uris": [
-                    f"http://zotero.org/users/local/items/{zotero_item_key}"
-                ],
-                "itemData": item_data
-            }
-        ],
+        "citationItems": citation_items,
         "schema": "https://github.com/citation-style-language/schema/raw/master/csl-citation.json"
     }
     
@@ -341,11 +379,17 @@ def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=
     w_rPr = f"{{{WORD_NS}}}rPr"
     w_rFonts = f"{{{WORD_NS}}}rFonts"
     
-    citation_counter = 1
+    # Global persistent mapping across document for citation deduplication
+    key_to_id = {}
+    key_to_zotero_key = {}
+    key_to_num = {}
+    next_item_id = 10001
+    
     citations_replaced = 0
     inserted_keys = []
     
-    # Iterate through all paragraph (<w:p>) elements
+    placeholder_pattern = re.compile(r'\{([a-zA-Z0-9_\-,\s]+)\}')
+    
     for p in root.iter(w_p):
         text_runs = []
         rPr_sample = None
@@ -369,7 +413,6 @@ def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=
             if pPr is not None:
                 p.append(pPr)
             
-            # Insert Zotero Bibliography Field
             r_begin = ET.Element(w_r)
             fld_b = ET.SubElement(r_begin, w_fldChar)
             fld_b.set(f"{{{WORD_NS}}}fldCharType", "begin")
@@ -392,13 +435,18 @@ def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=
             p.append(r_end)
             continue
 
-        placeholders_in_p = []
-        for key in bib_entries.keys():
-            placeholder = f"{{{key}}}"
-            if placeholder in full_text:
-                placeholders_in_p.append((placeholder, key))
+        matches = list(placeholder_pattern.finditer(full_text))
+        valid_placeholders = []
+        
+        for m in matches:
+            ph_text = m.group(0)
+            inner = m.group(1)
+            keys = [k.strip() for k in inner.split(',')]
+            valid_keys = [k for k in keys if k in bib_entries]
+            if valid_keys:
+                valid_placeholders.append((ph_text, valid_keys))
                 
-        if not placeholders_in_p:
+        if not valid_placeholders:
             continue
             
         pPr = p.find(f"{{{WORD_NS}}}pPr")
@@ -406,27 +454,32 @@ def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=
         if pPr is not None:
             p.append(pPr)
             
-        pattern = "|".join(re.escape(ph[0]) for ph in placeholders_in_p)
-        splits = re.split(f"({pattern})", full_text)
+        split_pattern = "|".join(re.escape(ph[0]) for ph in valid_placeholders)
+        splits = re.split(f"({split_pattern})", full_text)
         
         for segment in splits:
             if not segment:
                 continue
                 
-            matched_key = None
-            for ph, key in placeholders_in_p:
+            matched_keys = None
+            for ph, keys in valid_placeholders:
                 if segment == ph:
-                    matched_key = key
+                    matched_keys = keys
                     break
                     
-            if matched_key:
-                bib_entry = bib_entries[matched_key]
-                csl_json_str, formatted_label = generate_zotero_csl_citation_json(
-                    matched_key, bib_entry, citation_counter, style=style
+            if matched_keys:
+                for key in matched_keys:
+                    if key not in key_to_id:
+                        key_to_id[key] = next_item_id
+                        next_item_id += 1
+                        key_to_zotero_key[key] = generate_random_id(8)
+                        key_to_num[key] = len(key_to_num) + 1
+                        
+                csl_json_str, formatted_label = generate_grouped_zotero_csl_citation_json(
+                    matched_keys, bib_entries, key_to_id, key_to_zotero_key, key_to_num, style=style
                 )
-                citation_counter += 1
                 citations_replaced += 1
-                inserted_keys.append(matched_key)
+                inserted_keys.extend(matched_keys)
                 
                 def make_run():
                     r_el = ET.Element(w_r)
@@ -498,7 +551,7 @@ def process_document_xml(xml_bytes, bib_entries, style='ieee', add_bibliography=
             
         modified_xml = combined_header + modified_xml[first_body:]
         
-    return modified_xml.encode('utf-8'), citations_replaced, inserted_keys
+    return modified_xml.encode('utf-8'), citations_replaced, list(set(inserted_keys))
 
 def build_custom_xml(style='ieee'):
     """Build docProps/custom.xml containing Zotero document settings, chunked into <=255 char properties."""
@@ -627,6 +680,7 @@ def convert_docx(input_docx, bib_file, output_docx, style='ieee', add_bibliograp
         "output_file": output_docx,
         "citations_inserted": count,
         "citation_keys": inserted_keys,
+        "unique_references_count": len(inserted_keys),
         "style": style
     }
 
